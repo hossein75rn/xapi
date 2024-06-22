@@ -1,0 +1,333 @@
+<?php
+header('Content-Type: application/json; charset=utf-8');
+class V2rayManager
+{
+    public $db;
+
+    function __construct()
+    {
+        try {
+            $db = new PDO('sqlite:/etc/x-ui/x-ui.db');
+            $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $this->db = $db;
+        } catch (PDOException $e) {
+        }
+    }
+
+    function auth($username, $password)
+    {
+        $stmt = $this->db->prepare('SELECT * FROM users WHERE users.username = :username AND users.password = :password');
+        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+        $stmt->bindValue(':password', $password, PDO::PARAM_STR);
+        $stmt->execute();
+        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (count($result) == 1) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    function createV2rayLink($client, $row, $serverUrl)
+    {
+        $streamSettings = json_decode($row['stream_settings'], true);
+        $port = $row['port'];
+        $remark = $row['remark'];
+        $protocol = $row['protocol'];
+        $id = $client['id'];
+        $path = urlencode($streamSettings['wsSettings']['path']);
+        $network = $streamSettings['network'];
+        $vLink = "{$protocol}://{$id}@{$serverUrl}:{$port}?type={$network}&path={$path}&security=none#{$port}-{$remark}";
+        return $vLink;
+    }
+
+    function removeLineBreaks($string)
+    {
+        return str_replace(array("\r", "\n"), '', $string);
+    }
+
+    function getRowWithFewestEnabledClients()
+    {
+        try {
+
+            $query = "
+                SELECT inbound_id AS inbound, COUNT(email) AS clients
+                FROM client_traffics
+                WHERE enable = 1
+                GROUP BY inbound_id
+                ORDER BY clients ASC
+                LIMIT 1
+            ";
+            $result = $this->db->query($query);
+            $rows = $result->fetchAll(PDO::FETCH_ASSOC);
+            if ($rows) {
+                return $rows[0]["inbound"];
+            } else {
+                return 0;
+            }
+        } catch (PDOException $e) {
+        }
+
+        return null;
+    }
+
+    function getTotalEnabledClientsInAllRows()
+    {
+        try {
+            $query = "SELECT SUM(clients) AS total_clients
+        FROM (
+        SELECT inbound_id AS inbound, COUNT(email) AS clients
+        FROM client_traffics
+        WHERE enable = 1
+        GROUP BY inbound_id
+        ) AS subquery";
+            $result = $this->db->query($query);
+            $rows = $result->fetchAll(PDO::FETCH_ASSOC);
+            if ($rows) {
+                return $rows[0]["total_clients"];
+            } else {
+                return 0;
+            }
+        } catch (PDOException $e) {
+        }
+
+        return null;
+    }
+
+    function daysToMilliseconds($days)
+    {
+        // Convert days to seconds
+        $milliseconds = $days * 86400000;
+        return $milliseconds;
+    }
+
+    function genUuid()
+    {
+        $uuid = array(
+            'time_low' => 0,
+            'time_mid' => 0,
+            'time_hi' => 0,
+            'clock_seq_hi' => 0,
+            'clock_seq_low' => 0,
+            'node' => array()
+        );
+
+        $uuid['time_low'] = mt_rand(0, 0xffff) + (mt_rand(0, 0xffff) << 16);
+        $uuid['time_mid'] = mt_rand(0, 0xffff);
+        $uuid['time_hi'] = (4 << 12) | (mt_rand(0, 0x1000));
+        $uuid['clock_seq_hi'] = (1 << 7) | (mt_rand(0, 128));
+        $uuid['clock_seq_low'] = mt_rand(0, 255);
+
+        for ($i = 0; $i < 6; $i++) {
+            $uuid['node'][$i] = mt_rand(0, 255);
+        }
+
+        $formatted_uuid = sprintf(
+            '%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x',
+            $uuid['time_low'],
+            $uuid['time_mid'],
+            $uuid['time_hi'],
+            $uuid['clock_seq_hi'],
+            $uuid['clock_seq_low'],
+            $uuid['node'][0],
+            $uuid['node'][1],
+            $uuid['node'][2],
+            $uuid['node'][3],
+            $uuid['node'][4],
+            $uuid['node'][5]
+        );
+
+        return $formatted_uuid;
+    }
+
+    function expiryTime($client)
+    {
+        // Check if the client timestamp is valid
+        if (!is_numeric($client) || $client <= 0) {
+            return "0 روز 0 ساعت";
+        }
+
+        // Convert the client timestamp to seconds
+        $expiryTime = $client / 1000;
+
+        // Create a DateTime object for the expiry date
+        $expiryDate = new DateTime('@' . $expiryTime);
+        $expiryDate->setTimezone(new DateTimeZone('Asia/Tehran'));
+
+        // Get the current date and time in the same timezone
+        $now = new DateTime("now", new DateTimeZone('Asia/Tehran'));
+
+        // Calculate the interval between now and the expiry date
+        $interval = $now->diff($expiryDate);
+
+        // If the expiry date is in the past, return "0 روز 0 ساعت"
+        if ($expiryDate < $now) {
+            return "0 روز 0 ساعت";
+        }
+
+        // Get the number of days and hours
+        $daysUntilExpiry = $interval->days;
+        $hoursUntilExpiry = $interval->h;
+
+        // Return the formatted string
+        return "$daysUntilExpiry روز $hoursUntilExpiry ساعت";
+    }
+
+
+    function bytesToGigabytes($bytes)
+    {
+        $units = array('B', 'KB', 'MB', 'GB', 'TB');
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+        $bytes /= pow(1024, $pow);
+        return round($bytes, 2) . ' ' . $units[$pow];
+    }
+
+    function gigabytesToBytes($gigabytes)
+    {
+        return $gigabytes * 1073741824;
+    }
+
+
+
+    function getTotal($panelUsername, $panelPassword)
+    {
+
+        $result = array();
+        if ($this->auth($panelUsername, $panelPassword)) {
+            $result['status'] = "true";
+            $result['totalClients'] = $this->getTotalEnabledClientsInAllRows();
+            $result['inbound'] = $this->getRowWithFewestEnabledClients();
+            return json_encode($result);
+        }
+        $result['status'] = "false";
+        $result['totalClients'] = "";
+        $result['inbound'] = "";
+        return json_encode($result);
+    }
+
+    function findClientByEmailInRow($panelUsername, $panelPassword, $id, $email, $serverUrl)
+    {
+        $result = array();
+        if ($this->auth($panelUsername, $panelPassword)) {
+            try {
+                $dbResult = $this->db->query("SELECT * FROM inbounds WHERE id = {$id}");
+                $row = $dbResult->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    $settings = json_decode($row['settings'], true);
+                    foreach ($settings['clients'] as $client) {
+                        if ($client['email'] === $email) {
+                            $result['status'] = "true";
+                            $result['client'] =  $client;
+                            $result['client']['expiryTime'] = $this->expiryTime($client['expiryTime']);
+                            $result['client']['totalGB'] = $this->bytesToGigabytes($client['totalGB']);
+                            $result['link'] = $this->createV2rayLink($client, $row, $serverUrl);
+                            $query = 'SELECT c.enable , c.down , c.up FROM client_traffics as c WHERE email = "' . $email . '"';
+                            $dbResult = $this->db->query($query);
+                            $row = $dbResult->fetch(PDO::FETCH_ASSOC);
+                            $enable = json_decode($row['enable']);
+                            $up = json_decode($row['up']);
+                            $down = json_decode($row['down']);
+                            $result['client']['enable'] = $enable;
+                            $result['client']['up'] = $this->bytesToGigabytes($up);
+                            $result['client']['down'] = $this->bytesToGigabytes($down);
+                            return json_encode($result);
+                        }
+                    }
+                }
+                $result['status'] = "false";
+                return json_encode($result);
+            } catch (PDOException $e) {
+                $result['status'] = "false";
+                $result['msg'] = "error in executing database task  " . $e;
+                return json_encode($result, JSON_UNESCAPED_SLASHES);
+            }
+        }
+    }
+}
+
+class ClientManager
+{
+    private $loginUrl;
+    private $addClientUrl;
+    private $cookieData = '';
+
+    public function __construct($port, $sublink)
+    {
+        $baseUrl = "http://localhost:$port/$sublink";
+        $this->loginUrl = rtrim($baseUrl, '/') . '/login';
+        $this->addClientUrl = rtrim($baseUrl, '/') . '/panel/inbound/addClient';
+    }
+
+    public function login($username, $password)
+    {
+        // Initialize cURL session
+        $ch = curl_init();
+        // Set the URL and other options for cURL
+        curl_setopt($ch, CURLOPT_URL, $this->loginUrl);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(['username' => $username, 'password' => $password]));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+
+        // Execute the login request
+        $response = curl_exec($ch);
+        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $header = substr($response, 0, $headerSize);
+        $body = substr($response, $headerSize);
+
+        // Close the cURL session
+        curl_close($ch);
+
+        // Extract cookies from the header
+        if (preg_match_all('/^Set-Cookie:\s*([^;]*)/mi', $header, $matches)) {
+            $this->cookieData = implode('; ', $matches[1]);
+        } else {
+            die('Login failed');
+        }
+    }
+
+    public function addNewClient($id, $uuid, $email, $subId = '', $tgId = '', $flow = '', $totalgb = 0, $eT = 0, $limitIp = 0, $fingerprint = 'chrome', $isTrojan = false)
+    {
+        $subId = $subId == '' ? uniqid() : $subId;
+        $settings = json_encode(['clients' => [[
+            $isTrojan ? 'password' : 'id' => $uuid,
+            'enable' => true,
+            'flow' => $flow,
+            'email' => $email,
+            'totalGB' => $totalgb,
+            'limitIp' => $limitIp,
+            'expiryTime' => $eT,
+            'fingerprint' => $fingerprint,
+            'tgId' => $tgId,
+            'subId' => $subId
+        ]]]);
+
+        // Post data for the second request
+        $addClientPostFields = [
+            'id' => $id,
+            'settings' => $settings
+        ];
+
+        // Initialize another cURL session
+        $ch = curl_init();
+
+        // Set the URL and other options for cURL
+        curl_setopt($ch, CURLOPT_URL, $this->addClientUrl);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($addClientPostFields));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Cookie: $this->cookieData"]);
+
+        // Execute the second request
+        $response = curl_exec($ch);
+
+        // Close the cURL session
+        curl_close($ch);
+
+        // Output the response from the second request
+        echo $response;
+    }
+}

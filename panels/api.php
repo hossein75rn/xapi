@@ -253,12 +253,14 @@ class ClientManager
     private $loginUrl;
     private $addClientUrl;
     private $cookieData = '';
+    private $delClientUrl = '';
 
     public function __construct($port, $sublink)
     {
         $baseUrl = "http://localhost:$port/$sublink";
         $this->loginUrl = rtrim($baseUrl, '/') . '/login';
         $this->addClientUrl = rtrim($baseUrl, '/') . '/panel/inbound/addClient';
+        $this->delClientUrl = rtrim($baseUrl, '/') . '/panel/inbound/1/delClient/';
     }
 
     public function login($username, $password)
@@ -318,6 +320,26 @@ class ClientManager
         curl_setopt($ch, CURLOPT_URL, $this->addClientUrl);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($addClientPostFields));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Cookie: $this->cookieData"]);
+
+        // Execute the second request
+        $response = curl_exec($ch);
+
+        // Close the cURL session
+        curl_close($ch);
+
+        // Output the response from the second request
+        echo $response;
+    }
+    public function deleteClient($uuid)
+    {
+        $url = $this->delClientUrl . $uuid;
+        $ch = curl_init();
+
+        // Set the URL and other options for cURL
+        curl_setopt($ch, CURLOPT_URL, $this->$url);
+        curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ["Cookie: $this->cookieData"]);
 

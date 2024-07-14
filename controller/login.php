@@ -5,9 +5,9 @@ error_reporting(E_ALL);
 ini_set('display_errors', 'On');
 header('Content-Type: application/json');
 $host = "localhost";
-$database = "vpn";
-$username = "userName";
-$password = "password";
+$database = "mine";
+$username = "hossein75rn";
+$password = "Abc4050d";
 $mysqli = new mysqli($host, $username, $password, $database);
 if ($mysqli->connect_errno == 0) {
     try {

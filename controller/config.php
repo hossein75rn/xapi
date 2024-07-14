@@ -7,9 +7,9 @@ ini_set('display_errors', 'On');
 header('Content-Type: application/json');
 
 $host = "localhost";
-$database = "vpn";
-$username = "userName";
-$password = "password";
+$database = "mine";
+$username = "hossein75rn";
+$password = "Abc4050d";
 
 $mysqli = new mysqli($host, $username, $password, $database);
 $mysqli->set_charset('utf8');
@@ -34,10 +34,16 @@ function processRequest($mysqli)
     $uuid = getUUIDFromRequest();
     $up = fetchUsernameAndPanels($mysqli, $uuid);
     $sc = fetchSconfigs($mysqli, $uuid);
+    $generalConfigs = fetchGeneralConfigs($mysqli);
     if ($up->num_rows > 0) {
         $sconfigs = array();
         if ($sc != null) {
             while ($row = $sc->fetch_assoc()) {
+                $sconfigs[] = $row["config"];
+            }
+        }
+        if ($generalConfigs != null) {
+            while ($row = $generalConfigs->fetch_assoc()) {
                 $sconfigs[] = $row["config"];
             }
         }
@@ -101,6 +107,16 @@ function fetchSconfigs($mysqli, $uuid)
         return $result;
     return null;
 }
+function fetchGeneralConfigs($mysqli)
+{
+    $stmt = prepareStatement($mysqli, 'SELECT *  FROM configs WHERE configs.uuid LIKE "general"');
+    executeStatement($stmt);
+    $result =  $stmt->get_result();
+    if ($result->num_rows > 0)
+        return $result;
+    return null;
+}
+
 function prepareStatement($mysqli, $query)
 {
     $stmt = $mysqli->prepare($query);

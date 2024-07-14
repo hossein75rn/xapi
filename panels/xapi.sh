@@ -25,7 +25,7 @@ sudo apt install php8.1-curl -y
 
 # Create directories and set permissions
 mkdir -p "/var/www/api"
-chmod 7777 "/var/www/html/cookie"
+
 
 # Install PHP SQLite3 extension
 sudo apt-get install -y php8.1-sqlite3
